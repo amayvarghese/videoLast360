@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Video Panorama Creator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎥 360° Panorama Creator</h1>
+            <p class="subtitle">Record a video and transform it into a stunning 360° image</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Camera Preview Section -->
+            <div class="section">
+                <h2>Camera Preview</h2>
+                <div class="video-container">
+                    <video id="videoPreview" autoplay playsinline></video>
+                    <div id="recordingIndicator" class="recording-indicator hidden">
+                        <span class="recording-dot"></span>
+                        <span>Recording...</span>
+                        <span id="timer">00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls Section -->
+            <div class="section controls-section">
+                <button id="startCameraBtn" class="btn btn-primary">Start Camera</button>
+                <button id="startRecordingBtn" class="btn btn-success hidden">Start Recording</button>
+                <button id="stopRecordingBtn" class="btn btn-danger hidden">Stop Recording</button>
+                <button id="processBtn" class="btn btn-process hidden">Create 360° Image</button>
+            </div>
+
+            <!-- Recorded Video Section -->
+            <div id="recordedSection" class="section hidden">
+                <h2>Recorded Video</h2>
+                <video id="recordedVideo" controls></video>
+            </div>
+
+            <!-- Processing Status -->
+            <div id="processingStatus" class="processing-status hidden">
+                <div class="spinner"></div>
+                <p id="statusText">Processing...</p>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <div id="resultSection" class="section hidden">
+                <h2>360° Panorama Result</h2>
+                <div class="result-container">
+                    <canvas id="panoramaCanvas"></canvas>
+                </div>
+                <div class="download-section">
+                    <button id="downloadBtn" class="btn btn-download">Download 360° Image</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
