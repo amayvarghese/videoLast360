@@ -38,7 +38,17 @@
             <!-- Recorded Video Section -->
             <div id="recordedSection" class="section hidden">
                 <h2>Recorded Video</h2>
-                <video id="recordedVideo" controls></video>
+                <video id="recordedVideo" controls preload="metadata"></video>
+                <p id="videoInfo" class="video-info"></p>
+                <div class="video-actions">
+                    <button id="downloadVideoBtn" class="btn btn-download">Download Video</button>
+                </div>
+            </div>
+
+            <!-- Extracted Frames Section -->
+            <div id="framesSection" class="section hidden">
+                <h2>Extracted Frames <span id="frameCount" class="frame-count"></span></h2>
+                <div id="framesGallery" class="frames-gallery"></div>
             </div>
 
             <!-- Processing Status -->

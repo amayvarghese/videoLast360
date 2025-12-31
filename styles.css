@@ -224,6 +224,59 @@ header h1 {
     text-align: center;
 }
 
+.video-info {
+    margin-top: 10px;
+    color: #666;
+    font-size: 0.9em;
+    text-align: center;
+}
+
+.video-actions {
+    text-align: center;
+    margin-top: 15px;
+}
+
+.frames-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.frame-item {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: #f0f0f0;
+    aspect-ratio: 16/9;
+}
+
+.frame-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.frame-item .frame-number {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px;
+    font-size: 0.8em;
+    text-align: center;
+}
+
+.frame-count {
+    color: #667eea;
+    font-size: 0.8em;
+    font-weight: normal;
+}
+
 @media (max-width: 768px) {
     header h1 {
         font-size: 2em;

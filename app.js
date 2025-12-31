@@ -24,6 +24,11 @@ const progressFill = document.getElementById('progressFill');
 const recordingIndicator = document.getElementById('recordingIndicator');
 const timer = document.getElementById('timer');
 const panoramaCanvas = document.getElementById('panoramaCanvas');
+const framesSection = document.getElementById('framesSection');
+const framesGallery = document.getElementById('framesGallery');
+const frameCount = document.getElementById('frameCount');
+const videoInfo = document.getElementById('videoInfo');
+const downloadVideoBtn = document.getElementById('downloadVideoBtn');
 
 // Start camera
 startCameraBtn.addEventListener('click', async () => {
@@ -45,20 +50,38 @@ startCameraBtn.addEventListener('click', async () => {
 // Start recording
 startRecordingBtn.addEventListener('click', () => {
     recordedChunks = [];
+    frames = []; // Clear previous frames
+    framesSection.classList.add('hidden'); // Hide frames section
     
-    const options = {
-        mimeType: 'video/webm;codecs=vp9'
-    };
+    // Try different codecs for better compatibility
+    const options = [
+        { mimeType: 'video/webm;codecs=vp9' },
+        { mimeType: 'video/webm;codecs=vp8' },
+        { mimeType: 'video/webm' },
+        { mimeType: 'video/mp4' }
+    ];
     
-    try {
-        mediaRecorder = new MediaRecorder(stream, options);
-    } catch (e) {
-        console.warn('MediaRecorder with VP9 not supported, trying VP8...');
+    let recorderCreated = false;
+    for (const option of options) {
         try {
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-        } catch (e2) {
-            console.warn('MediaRecorder with VP8 not supported, using default...');
+            if (MediaRecorder.isTypeSupported(option.mimeType)) {
+                mediaRecorder = new MediaRecorder(stream, option);
+                console.log('Using codec:', option.mimeType);
+                recorderCreated = true;
+                break;
+            }
+        } catch (e) {
+            continue;
+        }
+    }
+    
+    if (!recorderCreated) {
+        try {
             mediaRecorder = new MediaRecorder(stream);
+            console.log('Using default MediaRecorder');
+        } catch (e) {
+            alert('MediaRecorder is not supported in this browser.');
+            return;
         }
     }
     
@@ -68,12 +91,81 @@ startRecordingBtn.addEventListener('click', () => {
         }
     };
     
-    mediaRecorder.onstop = () => {
-        recordedVideoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+    mediaRecorder.onstop = async () => {
+        if (recordedChunks.length === 0) {
+            alert('No video data recorded. Please try again.');
+            return;
+        }
+        
+        // Determine the correct MIME type from the recorder
+        const mimeType = mediaRecorder.mimeType || 'video/webm';
+        console.log('Recording MIME type:', mimeType);
+        
+        // Create video blob with correct type
+        recordedVideoBlob = new Blob(recordedChunks, { type: mimeType });
         const url = URL.createObjectURL(recordedVideoBlob);
+        
+        // Set video source
         recordedVideo.src = url;
+        recordedVideo.muted = false;
+        recordedVideo.controls = true;
+        
+        // Add error handling for video playback
+        recordedVideo.onerror = (e) => {
+            console.error('Video playback error:', e);
+            videoInfo.textContent = 'Error: Video cannot be played. The video was recorded but may have compatibility issues.';
+        };
+        
+        recordedVideo.onloadeddata = () => {
+            console.log('Video data loaded successfully');
+        };
+        
+        // Show video section
         recordedSection.classList.remove('hidden');
+        
+        // Wait for video metadata to load
+        await new Promise((resolve) => {
+            const onLoadedMetadata = () => {
+                recordedVideo.removeEventListener('loadedmetadata', onLoadedMetadata);
+                const duration = recordedVideo.duration;
+                const sizeMB = (recordedVideoBlob.size / (1024 * 1024)).toFixed(2);
+                videoInfo.textContent = `Duration: ${duration.toFixed(2)}s | Size: ${sizeMB} MB | Resolution: ${recordedVideo.videoWidth}x${recordedVideo.videoHeight}`;
+                resolve();
+            };
+            
+            recordedVideo.addEventListener('loadedmetadata', onLoadedMetadata);
+            recordedVideo.load();
+            
+            // Fallback timeout
+            setTimeout(() => {
+                if (recordedVideo.readyState >= 1) {
+                    const duration = recordedVideo.duration || 0;
+                    const sizeMB = (recordedVideoBlob.size / (1024 * 1024)).toFixed(2);
+                    videoInfo.textContent = `Duration: ${duration.toFixed(2)}s | Size: ${sizeMB} MB`;
+                    resolve();
+                }
+            }, 2000);
+        });
+        
+        // Show process button
         processBtn.classList.remove('hidden');
+        
+        // Automatically extract frames after video is ready
+        processingStatus.classList.remove('hidden');
+        statusText.textContent = 'Extracting frames from video...';
+        progressFill.style.width = '0%';
+        
+        try {
+            await extractFrames(recordedVideo);
+            displayFrames();
+            processingStatus.classList.add('hidden');
+        } catch (error) {
+            console.error('Error extracting frames:', error);
+            statusText.textContent = 'Error: ' + error.message;
+            setTimeout(() => {
+                processingStatus.classList.add('hidden');
+            }, 3000);
+        }
     };
     
     mediaRecorder.start();
@@ -129,54 +221,105 @@ function stopRecording() {
 
 // Extract frames from video
 async function extractFrames(videoElement) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         frames = [];
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        videoElement.addEventListener('loadedmetadata', () => {
+        // Check if video has valid dimensions
+        if (!videoElement.videoWidth || !videoElement.videoHeight) {
+            // Wait for metadata if not loaded
+            const onLoadedMetadata = () => {
+                videoElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+                startExtraction();
+            };
+            
+            videoElement.addEventListener('loadedmetadata', onLoadedMetadata);
+            videoElement.load();
+            
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                if (frames.length === 0) {
+                    reject(new Error('Video failed to load. Please try recording again.'));
+                }
+            }, 5000);
+        } else {
+            startExtraction();
+        }
+        
+        function startExtraction() {
             canvas.width = videoElement.videoWidth;
             canvas.height = videoElement.videoHeight;
             
             const duration = videoElement.duration;
+            
+            if (!duration || duration === 0 || !isFinite(duration)) {
+                reject(new Error('Invalid video duration. Please record a valid video.'));
+                return;
+            }
+            
             const fps = 30; // Extract frames at 30fps
             const frameInterval = 1 / fps;
             const totalFrames = Math.ceil(duration * fps);
             
+            if (totalFrames === 0) {
+                reject(new Error('Video has no frames. Please record a longer video.'));
+                return;
+            }
+            
             let currentTime = 0;
             let frameCount = 0;
+            let seekTimeout;
             
             function extractFrame() {
                 if (currentTime >= duration) {
+                    clearTimeout(seekTimeout);
                     resolve(frames);
                     return;
                 }
                 
                 videoElement.currentTime = currentTime;
+                
+                // Timeout for seek operation (in case video is stuck)
+                clearTimeout(seekTimeout);
+                seekTimeout = setTimeout(() => {
+                    console.warn('Seek timeout, continuing...');
+                    currentTime += frameInterval;
+                    extractFrame();
+                }, 2000);
             }
             
-            videoElement.addEventListener('seeked', () => {
-                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-                const imageData = canvas.toDataURL('image/jpeg', 0.95);
-                frames.push({
-                    imageData: imageData,
-                    canvas: canvas,
-                    time: currentTime
-                });
-                
-                frameCount++;
-                const progress = (frameCount / totalFrames) * 50; // First 50% of progress
-                progressFill.style.width = `${progress}%`;
-                statusText.textContent = `Extracting frames: ${frameCount}/${totalFrames}`;
-                
-                currentTime += frameInterval;
-                extractFrame();
-            });
+            const onSeeked = () => {
+                try {
+                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                    const imageData = canvas.toDataURL('image/jpeg', 0.95);
+                    frames.push({
+                        imageData: imageData,
+                        canvas: canvas,
+                        time: currentTime
+                    });
+                    
+                    frameCount++;
+                    const progress = 10 + (frameCount / totalFrames) * 50; // 10-60% of progress
+                    progressFill.style.width = `${progress}%`;
+                    statusText.textContent = `Extracting frames: ${frameCount}/${totalFrames}`;
+                    
+                    clearTimeout(seekTimeout);
+                    currentTime += frameInterval;
+                    extractFrame();
+                } catch (error) {
+                    console.error('Error extracting frame:', error);
+                    clearTimeout(seekTimeout);
+                    currentTime += frameInterval;
+                    extractFrame();
+                }
+            };
             
+            videoElement.addEventListener('seeked', onSeeked);
+            
+            // Start extraction
             extractFrame();
-        });
-        
-        videoElement.load();
+        }
     });
 }
 
@@ -408,21 +551,56 @@ function findOverlap(img1, img2, width, height) {
 
 // Create panorama using improved technique
 async function createPanorama() {
+    // Check if frames are already extracted
     if (frames.length === 0) {
-        alert('No frames extracted. Please record a video first.');
-        return;
+        // Check if video is available
+        if (!recordedVideoBlob || !recordedVideo.src) {
+            alert('Please record a video first before creating a 360° image.');
+            return;
+        }
+        
+        processingStatus.classList.remove('hidden');
+        statusText.textContent = 'Loading video...';
+        progressFill.style.width = '0%';
+        
+        try {
+            // Ensure video is loaded and ready
+            if (recordedVideo.readyState < 2) {
+                statusText.textContent = 'Waiting for video to load...';
+                await new Promise((resolve) => {
+                    recordedVideo.addEventListener('loadedmetadata', resolve, { once: true });
+                    recordedVideo.load();
+                });
+            }
+            
+            // Wait a bit more to ensure video is fully ready
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            statusText.textContent = 'Extracting frames...';
+            progressFill.style.width = '10%';
+            
+            // Extract frames
+            await extractFrames(recordedVideo);
+            displayFrames();
+            
+            if (frames.length === 0) {
+                throw new Error('No frames extracted from video. Please ensure the video is valid and has content.');
+            }
+        } catch (error) {
+            console.error('Error extracting frames:', error);
+            alert('Error extracting frames: ' + error.message);
+            processingStatus.classList.add('hidden');
+            return;
+        }
     }
     
     processingStatus.classList.remove('hidden');
-    statusText.textContent = 'Processing frames...';
-    progressFill.style.width = '0%';
+    statusText.textContent = 'Creating panorama...';
+    progressFill.style.width = '60%';
     
     try {
-        // Extract frames
-        await extractFrames(recordedVideo);
-        
         if (frames.length === 0) {
-            throw new Error('No frames extracted from video');
+            throw new Error('No frames available. Please record and extract frames first.');
         }
         
         statusText.textContent = 'Analyzing frame overlaps...';
@@ -578,7 +756,56 @@ function applyCylindricalProjection(sourceCanvas, height) {
 // Process button click
 processBtn.addEventListener('click', createPanorama);
 
-// Download button
+// Display extracted frames in gallery
+function displayFrames() {
+    if (frames.length === 0) {
+        framesSection.classList.add('hidden');
+        return;
+    }
+    
+    framesGallery.innerHTML = '';
+    frameCount.textContent = `(${frames.length} frames)`;
+    
+    frames.forEach((frame, index) => {
+        const frameItem = document.createElement('div');
+        frameItem.className = 'frame-item';
+        
+        const img = document.createElement('img');
+        img.src = frame.imageData;
+        img.alt = `Frame ${index + 1}`;
+        img.loading = 'lazy';
+        
+        const frameNumber = document.createElement('div');
+        frameNumber.className = 'frame-number';
+        frameNumber.textContent = `Frame ${index + 1} (${frame.time.toFixed(2)}s)`;
+        
+        frameItem.appendChild(img);
+        frameItem.appendChild(frameNumber);
+        framesGallery.appendChild(frameItem);
+    });
+    
+    framesSection.classList.remove('hidden');
+}
+
+// Download video button
+downloadVideoBtn.addEventListener('click', () => {
+    if (!recordedVideoBlob) {
+        alert('No video available to download.');
+        return;
+    }
+    
+    const link = document.createElement('a');
+    link.download = 'recorded-video-' + Date.now() + '.webm';
+    link.href = URL.createObjectURL(recordedVideoBlob);
+    link.click();
+    
+    // Clean up the URL after a delay
+    setTimeout(() => {
+        URL.revokeObjectURL(link.href);
+    }, 100);
+});
+
+// Download panorama button
 downloadBtn.addEventListener('click', () => {
     const link = document.createElement('a');
     link.download = '360-panorama-' + Date.now() + '.png';
